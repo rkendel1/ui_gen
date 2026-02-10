@@ -51,7 +51,7 @@ def test_print_prompt_summary():
     # Check that output contains box characters and content
     assert "┌─" in output
     assert "└─" in output
-    assert "PROMPT SUMMARY" in output
+    assert "PROMPT SUMMARY" not in output
     assert "SYSTEM: short message" in output
     assert "USER: hello" in output
 
@@ -81,7 +81,7 @@ def test_print_prompt_summary_long_content():
             assert len(line) == len(lines[0]) if lines[0].startswith('┌') else True
     
     # Check content is present
-    assert "PROMPT SUMMARY" in output
+    assert "PROMPT SUMMARY" not in output
     assert "SYSTEM:" in output
     assert "USER: short" in output
 

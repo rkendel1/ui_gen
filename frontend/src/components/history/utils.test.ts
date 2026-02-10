@@ -106,45 +106,83 @@ const basicBadHistory: Record<CommitHash, Commit> = {
 describe("History Utils", () => {
   test("should correctly extract the history tree", () => {
     expect(extractHistory("2", basicLinearHistory)).toEqual([
-      { text: "<html>1. create</html>", images: [] },
-      { text: "use better icons", images: [] },
-      { text: "<html>2. edit with better icons</html>", images: [] },
-      { text: "make text red", images: [] },
-      { text: "<html>3. edit with better icons and red text</html>", images: [] },
+      { role: "user", text: "", images: [""] },
+      { role: "assistant", text: "<html>1. create</html>", images: [] },
+      { role: "user", text: "use better icons", images: [] },
+      {
+        role: "assistant",
+        text: "<html>2. edit with better icons</html>",
+        images: [],
+      },
+      { role: "user", text: "make text red", images: [] },
+      {
+        role: "assistant",
+        text: "<html>3. edit with better icons and red text</html>",
+        images: [],
+      },
     ]);
 
     expect(extractHistory("0", basicLinearHistory)).toEqual([
-      { text: "<html>1. create</html>", images: [] },
+      { role: "user", text: "", images: [""] },
+      { role: "assistant", text: "<html>1. create</html>", images: [] },
     ]);
 
     // Test branching
     expect(extractHistory("3", basicBranchingHistory)).toEqual([
-      { text: "<html>1. create</html>", images: [] },
-      { text: "use better icons", images: [] },
-      { text: "<html>2. edit with better icons</html>", images: [] },
-      { text: "make text green", images: [] },
-      { text: "<html>4. edit with better icons and green text</html>", images: [] },
+      { role: "user", text: "", images: [""] },
+      { role: "assistant", text: "<html>1. create</html>", images: [] },
+      { role: "user", text: "use better icons", images: [] },
+      {
+        role: "assistant",
+        text: "<html>2. edit with better icons</html>",
+        images: [],
+      },
+      { role: "user", text: "make text green", images: [] },
+      {
+        role: "assistant",
+        text: "<html>4. edit with better icons and green text</html>",
+        images: [],
+      },
     ]);
 
     expect(extractHistory("4", longerBranchingHistory)).toEqual([
-      { text: "<html>1. create</html>", images: [] },
-      { text: "use better icons", images: [] },
-      { text: "<html>2. edit with better icons</html>", images: [] },
-      { text: "make text green", images: [] },
-      { text: "<html>4. edit with better icons and green text</html>", images: [] },
-      { text: "make text bold", images: [] },
+      { role: "user", text: "", images: [""] },
+      { role: "assistant", text: "<html>1. create</html>", images: [] },
+      { role: "user", text: "use better icons", images: [] },
       {
+        role: "assistant",
+        text: "<html>2. edit with better icons</html>",
+        images: [],
+      },
+      { role: "user", text: "make text green", images: [] },
+      {
+        role: "assistant",
+        text: "<html>4. edit with better icons and green text</html>",
+        images: [],
+      },
+      { role: "user", text: "make text bold", images: [] },
+      {
+        role: "assistant",
         text: "<html>5. edit with better icons and green, bold text</html>",
         images: [],
       },
     ]);
 
     expect(extractHistory("2", longerBranchingHistory)).toEqual([
-      { text: "<html>1. create</html>", images: [] },
-      { text: "use better icons", images: [] },
-      { text: "<html>2. edit with better icons</html>", images: [] },
-      { text: "make text red", images: [] },
-      { text: "<html>3. edit with better icons and red text</html>", images: [] },
+      { role: "user", text: "", images: [""] },
+      { role: "assistant", text: "<html>1. create</html>", images: [] },
+      { role: "user", text: "use better icons", images: [] },
+      {
+        role: "assistant",
+        text: "<html>2. edit with better icons</html>",
+        images: [],
+      },
+      { role: "user", text: "make text red", images: [] },
+      {
+        role: "assistant",
+        text: "<html>3. edit with better icons and red text</html>",
+        images: [],
+      },
     ]);
 
     // Errors

@@ -36,11 +36,17 @@ export interface PromptContent {
   images: string[]; // Array of data URLs
 }
 
+export interface HistoryItem {
+  role: "assistant" | "user";
+  text: string;
+  images: string[];
+}
+
 export interface CodeGenerationParams {
   generationType: "create" | "update";
   inputMode: "image" | "video" | "text";
   prompt: PromptContent;
-  history?: PromptContent[];
+  history?: HistoryItem[];
   isImportedFromCode?: boolean;
   fileState?: {
     path: string;

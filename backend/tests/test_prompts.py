@@ -138,10 +138,10 @@ class TestCreatePrompt:
             "prompt": {"text": "", "images": [self.TEST_IMAGE_URL]},
             "generationType": "update",
             "history": [
-                {"text": "<html>Initial code</html>"},  # Assistant's initial code
-                {"text": "Make the background blue"},  # User's update request
-                {"text": "<html>Updated code</html>"},  # Assistant's response
-                {"text": "Add a header"},  # User's new request
+                {"role": "assistant", "text": "<html>Initial code</html>", "images": []},
+                {"role": "user", "text": "Make the background blue", "images": []},
+                {"role": "assistant", "text": "<html>Updated code</html>", "images": []},
+                {"role": "user", "text": "Add a header", "images": []},
             ],
         }
 
@@ -240,10 +240,10 @@ class TestCreatePrompt:
             },
             "generationType": "update",
             "history": [
-                {"text": "<html>Initial dashboard</html>"},  # Assistant's initial code
-                {"text": "Add a sidebar"},                   # User's update request
-                {"text": "<html>Dashboard with sidebar</html>"},  # Assistant's response
-                {"text": "Now add a navigation menu"}       # User's new request
+                {"role": "assistant", "text": "<html>Initial dashboard</html>", "images": []},
+                {"role": "user", "text": "Add a sidebar", "images": []},
+                {"role": "assistant", "text": "<html>Dashboard with sidebar</html>", "images": []},
+                {"role": "user", "text": "Now add a navigation menu", "images": []},
             ]
         }
         with patch('prompts.system_prompt.SYSTEM_PROMPT', self.MOCK_SYSTEM_PROMPT):
@@ -355,9 +355,9 @@ class TestCreatePrompt:
             "prompt": {"text": "", "images": [self.TEST_IMAGE_URL]},
             "generationType": "update",
             "history": [
-                {"text": "<html>Initial code</html>", "images": []},
-                {"text": "Add a button", "images": [reference_image_url]},
-                {"text": "<html>Code with button</html>", "images": []}
+                {"role": "assistant", "text": "<html>Initial code</html>", "images": []},
+                {"role": "user", "text": "Add a button", "images": [reference_image_url]},
+                {"role": "assistant", "text": "<html>Code with button</html>", "images": []}
             ]
         }
 
@@ -427,9 +427,9 @@ class TestCreatePrompt:
             "prompt": {"text": "", "images": [self.TEST_IMAGE_URL]},
             "generationType": "update",
             "history": [
-                {"text": "<html>Initial code</html>", "images": []},
-                {"text": "Style like these examples", "images": [example1_url, example2_url]},
-                {"text": "<html>Styled code</html>", "images": []}
+                {"role": "assistant", "text": "<html>Initial code</html>", "images": []},
+                {"role": "user", "text": "Style like these examples", "images": [example1_url, example2_url]},
+                {"role": "assistant", "text": "<html>Styled code</html>", "images": []}
             ]
         }
 
@@ -504,9 +504,9 @@ class TestCreatePrompt:
             "prompt": {"text": "", "images": [self.TEST_IMAGE_URL]},
             "generationType": "update",
             "history": [
-                {"text": "<html>Initial code</html>", "images": []},
-                {"text": "Make it blue", "images": []},  # Explicit empty array
-                {"text": "<html>Blue code</html>", "images": []}
+                {"role": "assistant", "text": "<html>Initial code</html>", "images": []},
+                {"role": "user", "text": "Make it blue", "images": []},
+                {"role": "assistant", "text": "<html>Blue code</html>", "images": []}
             ]
         }
 
@@ -552,6 +552,57 @@ class TestCreatePrompt:
             assert_structure_match(actual, expected)
 
     @pytest.mark.asyncio
+    async def test_update_uses_explicit_history_roles(self) -> None:
+        """History role metadata should be respected even when order is irregular."""
+        params: Dict[str, Any] = {
+            "prompt": {"text": "", "images": [self.TEST_IMAGE_URL]},
+            "generationType": "update",
+            "history": [
+                {"role": "user", "text": "User first", "images": []},
+                {"role": "assistant", "text": "<html>Assistant second</html>", "images": []},
+            ],
+        }
+
+        messages = await build_prompt_messages(
+            stack=self.TEST_STACK,
+            input_mode="image",
+            generation_type=params["generationType"],
+            prompt=params["prompt"],
+            history=params.get("history", []),
+            is_imported_from_code=params.get("isImportedFromCode", False),
+        )
+
+        expected: ExpectedResult = {
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "<CONTAINS:You are a coding agent that's an expert at building front-ends.>",
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": self.TEST_IMAGE_URL,
+                                "detail": "high",
+                            },
+                        },
+                        {
+                            "type": "text",
+                            "text": "<CONTAINS:Generate code for a web page that looks exactly like the provided screenshot(s).>",
+                        },
+                    ],
+                },
+                {"role": "user", "content": "User first"},
+                {"role": "assistant", "content": "<html>Assistant second</html>"},
+            ],
+        }
+
+        actual: ExpectedResult = {"messages": messages}
+        assert_structure_match(actual, expected)
+
+    @pytest.mark.asyncio
     async def test_imported_code_update_with_images_in_history(self) -> None:
         """Test imported code flow with images in update history."""
         # Setup test data
@@ -560,9 +611,9 @@ class TestCreatePrompt:
             "isImportedFromCode": True,
             "generationType": "update",
             "history": [
-                {"text": "<html>Original imported code</html>", "images": []},
-                {"text": "Update with this reference", "images": [ref_image_url]},
-                {"text": "<html>Updated code</html>", "images": []}
+                {"role": "assistant", "text": "<html>Original imported code</html>", "images": []},
+                {"role": "user", "text": "Update with this reference", "images": [ref_image_url]},
+                {"role": "assistant", "text": "<html>Updated code</html>", "images": []}
             ]
         }
 
@@ -615,8 +666,8 @@ class TestCreatePrompt:
             "generationType": "update",
             "prompt": {"text": "", "images": [self.TEST_IMAGE_URL]},
             "history": [
-                {"text": "<html>Original imported code</html>", "images": []},
-                {"text": "Make the header blue", "images": []},
+                {"role": "assistant", "text": "<html>Original imported code</html>", "images": []},
+                {"role": "user", "text": "Make the header blue", "images": []},
             ],
         }
 

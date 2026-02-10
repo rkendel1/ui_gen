@@ -1,10 +1,10 @@
-from typing import Any, cast
+from typing import cast
 
 from openai.types.chat import ChatCompletionContentPartParam, ChatCompletionMessageParam
 
 from custom_types import InputMode
 from prompts.image_prompt_builder import build_image_prompt_messages
-from prompts.prompt_types import PromptContent, Stack
+from prompts.prompt_types import PromptContent, Stack, HistoryItem
 from prompts import system_prompt
 from prompts.text_prompt_builder import build_text_prompt_messages
 from prompts.video_prompt_builder import build_video_prompt_messages
@@ -23,7 +23,7 @@ async def build_prompt_messages(
     input_mode: InputMode,
     generation_type: str,
     prompt: PromptContent,
-    history: list[dict[str, Any]],
+    history: list[HistoryItem],
     is_imported_from_code: bool,
 ) -> list[ChatCompletionMessageParam]:
     prompt_messages: list[ChatCompletionMessageParam] = []
@@ -78,21 +78,26 @@ async def build_prompt_messages(
             )
 
         if generation_type == "update":
-            for index, item in enumerate(history):
-                role = "assistant" if index % 2 == 0 else "user"
-                message = build_history_message(item, role)
+            for item in history:
+                message = build_history_message(item)
                 prompt_messages.append(message)
 
     return prompt_messages
 
 
-def build_history_message(
-    item: dict[str, Any], role: str
-) -> ChatCompletionMessageParam:
-    if role == "user" and item.get("images") and len(item["images"]) > 0:
+def build_history_message(item: HistoryItem) -> ChatCompletionMessageParam:
+    role = item["role"]
+    images = item.get("images", [])
+    if not isinstance(images, list):
+        images = []
+    text = item.get("text", "")
+    if not isinstance(text, str):
+        text = ""
+
+    if role == "user" and images:
         user_content: list[ChatCompletionContentPartParam] = []
 
-        for image_url in item["images"]:
+        for image_url in images:
             user_content.append(
                 {
                     "type": "image_url",
@@ -103,7 +108,7 @@ def build_history_message(
         user_content.append(
             {
                 "type": "text",
-                "text": item["text"],
+                "text": text,
             }
         )
 
@@ -119,7 +124,7 @@ def build_history_message(
         ChatCompletionMessageParam,
         {
             "role": role,
-            "content": item["text"],
+            "content": text,
         },
     )
 
@@ -145,17 +150,17 @@ def build_imported_code_prompt_messages(
         },
         build_history_message(
             {
+                "role": "user",
                 "text": user_prompt.get("text", ""),
                 "images": user_prompt.get("images", []),
-            },
-            "user",
+            }
         ),
     ]
 
 
 def resolve_imported_code_user_prompt(
     prompt: PromptContent,
-    history: list[dict[str, Any]],
+    history: list[HistoryItem],
 ) -> PromptContent:
     prompt_text = prompt.get("text", "")
     prompt_images = prompt.get("images", [])
@@ -172,9 +177,8 @@ def resolve_imported_code_user_prompt(
             "images": normalized_prompt_images,
         }
 
-    for index in range(len(history) - 1, 0, -1):
-        if index % 2 == 1:
-            item = history[index]
+    for item in reversed(history):
+        if item["role"] == "user":
             text = item.get("text", "")
             images = item.get("images", [])
             normalized_images: list[str] = []

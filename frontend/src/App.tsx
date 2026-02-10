@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { generateCode } from "./generateCode";
-import { AppState, CodeGenerationParams, EditorTheme, Settings } from "./types";
+import {
+  AppState,
+  CodeGenerationParams,
+  EditorTheme,
+  HistoryItem,
+  Settings,
+} from "./types";
 import { IS_RUNNING_ON_CLOUD } from "./config";
 import { PicoBadge } from "./components/messages/PicoBadge";
 import { OnboardingNote } from "./components/messages/OnboardingNote";
@@ -205,9 +211,16 @@ function App() {
             ...baseCommitObject,
             type: "ai_edit" as const,
             parentHash: head,
-            inputs: params.history
-              ? params.history[params.history.length - 1]
-              : { text: "", images: [] },
+            inputs: (() => {
+              const lastHistoryItem = params.history?.[params.history.length - 1];
+              if (lastHistoryItem && lastHistoryItem.role === "user") {
+                return {
+                  text: lastHistoryItem.text,
+                  images: lastHistoryItem.images,
+                };
+              }
+              return { text: "", images: [] };
+            })(),
           };
 
     // Create a new commit and set it as the head
@@ -463,7 +476,11 @@ function App() {
 
     const updatedHistory = [
       ...historyTree,
-      { text: modifiedUpdateInstruction, images: updateImages },
+      {
+        role: "user",
+        text: modifiedUpdateInstruction,
+        images: updateImages,
+      } satisfies HistoryItem,
     ];
 
     doGenerateCode({

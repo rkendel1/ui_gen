@@ -8,6 +8,17 @@ class PromptContent(TypedDict):
     images: List[str]
 
 
+HistoryRole = Literal["assistant", "user"]
+
+
+class HistoryItem(TypedDict):
+    """A normalized conversation turn with explicit role metadata."""
+
+    role: HistoryRole
+    text: str
+    images: List[str]
+
+
 Stack = Literal[
     "html_css",
     "html_tailwind",

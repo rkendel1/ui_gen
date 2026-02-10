@@ -91,9 +91,9 @@ class TestCreatePromptImageSupport:
             "prompt": {"text": "", "images": [self.TEST_IMAGE_URL]},
             "generationType": "update",
             "history": [
-                {"text": "<html>Initial code</html>", "images": []},
-                {"text": "Style like these examples", "images": [example1_url, example2_url]},
-                {"text": "<html>Styled code</html>", "images": []}
+                {"role": "assistant", "text": "<html>Initial code</html>", "images": []},
+                {"role": "user", "text": "Style like these examples", "images": [example1_url, example2_url]},
+                {"role": "assistant", "text": "<html>Styled code</html>", "images": []}
             ]
         }
 
@@ -168,9 +168,9 @@ class TestCreatePromptImageSupport:
             "prompt": {"text": "", "images": [self.TEST_IMAGE_URL]},
             "generationType": "update",
             "history": [
-                {"text": "<html>Initial code</html>", "images": []},
-                {"text": "Make it blue", "images": []},  # Explicit empty array
-                {"text": "<html>Blue code</html>", "images": []}
+                {"role": "assistant", "text": "<html>Initial code</html>", "images": []},
+                {"role": "user", "text": "Make it blue", "images": []},
+                {"role": "assistant", "text": "<html>Blue code</html>", "images": []}
             ]
         }
 
@@ -224,9 +224,9 @@ class TestCreatePromptImageSupport:
             "isImportedFromCode": True,
             "generationType": "update",
             "history": [
-                {"text": "<html>Original imported code</html>", "images": []},
-                {"text": "Update with this reference", "images": [ref_image_url]},
-                {"text": "<html>Updated code</html>", "images": []}
+                {"role": "assistant", "text": "<html>Original imported code</html>", "images": []},
+                {"role": "user", "text": "Update with this reference", "images": [ref_image_url]},
+                {"role": "assistant", "text": "<html>Updated code</html>", "images": []}
             ]
         }
 

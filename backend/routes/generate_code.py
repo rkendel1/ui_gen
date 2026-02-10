@@ -34,8 +34,6 @@ from typing import (
 )
 from openai.types.chat import ChatCompletionMessageParam
 
-from utils import print_prompt_summary
-
 # WebSocket message types
 MessageType = Literal[
     "chunk",
@@ -52,7 +50,7 @@ MessageType = Literal[
     "toolResult",
 ]
 from prompts.builders import build_prompt_messages
-from prompts.prompt_types import Stack, PromptContent
+from prompts.prompt_types import Stack, PromptContent, HistoryItem
 from agent.runner import Agent
 
 # from utils import pprint_prompt
@@ -220,7 +218,7 @@ class ExtractedParams:
     openai_base_url: str | None
     generation_type: Literal["create", "update"]
     prompt: PromptContent
-    history: List[Dict[str, Any]]
+    history: List[HistoryItem]
     is_imported_from_code: bool
     file_state: Dict[str, str] | None
     option_codes: List[str]
@@ -293,12 +291,39 @@ class ParameterExtractionStage:
             }
 
         # Extract history (default to empty list)
-        history: List[Dict[str, Any]] = []
+        history: List[HistoryItem] = []
         raw_history = params.get("history")
         if isinstance(raw_history, list):
-            for item in raw_history:
+            raw_history_items = cast(List[object], raw_history)
+            for index, item in enumerate(raw_history_items):
                 if isinstance(item, dict):
-                    history.append(item)
+                    normalized_item = cast(Dict[str, Any], item)
+                    role_raw = normalized_item.get("role")
+                    if role_raw not in ("assistant", "user"):
+                        await self.throw_error(
+                            f"Invalid history role at index {index}: {role_raw!r}"
+                        )
+                        raise ValueError(
+                            f"Invalid history role at index {index}: {role_raw!r}"
+                        )
+                    role = cast(Literal["assistant", "user"], role_raw)
+                    text = normalized_item.get("text")
+                    images = normalized_item.get("images")
+                    normalized_images = (
+                        [img for img in images if isinstance(img, str)]
+                        if isinstance(images, list)
+                        else []
+                    )
+                    history.append(
+                        {
+                            "role": role,
+                            "text": text if isinstance(text, str) else "",
+                            "images": normalized_images,
+                        }
+                    )
+
+        if history:
+            print(_format_history_debug_log(history))
 
         # Extract imported code flag
         is_imported_from_code = bool(params.get("isImportedFromCode", False))
@@ -352,6 +377,17 @@ class ParameterExtractionStage:
             return env_var
 
         return None
+
+
+def _format_history_debug_log(history: List[HistoryItem]) -> str:
+    lines = [f"Normalized history ({len(history)} turns):"]
+    for index, item in enumerate(history):
+        text = item["text"].replace("\n", "\\n")
+        preview = text[:120] + ("..." if len(text) > 120 else "")
+        lines.append(
+            f"  [{index}] role={item['role']} images={len(item['images'])} text=\"{preview}\""
+        )
+    return "\n".join(lines)
 
 
 class ModelSelectionStage:
@@ -484,8 +520,6 @@ class PromptCreationStage:
                 history=extracted_params.history,
                 is_imported_from_code=extracted_params.is_imported_from_code,
             )
-
-            print_prompt_summary(prompt_messages, truncate=False)
 
             return prompt_messages
         except Exception:
