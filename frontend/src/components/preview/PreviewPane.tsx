@@ -1,12 +1,18 @@
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../ui/tabs";
 import {
-  FaUndo,
-  FaDownload,
   FaDesktop,
   FaMobile,
   FaCode,
 } from "react-icons/fa";
-import { LuExternalLink, LuRefreshCw } from "react-icons/lu";
+import {
+  LuChevronLeft,
+  LuChevronRight,
+  LuExternalLink,
+  LuImage,
+  LuRefreshCw,
+  LuDownload,
+} from "react-icons/lu";
+import { useMemo, useState } from "react";
 import { AppState, Settings } from "../../types";
 import CodeTab from "./CodeTab";
 import { Button } from "../ui/button";
@@ -27,13 +33,25 @@ function openInNewTab(code: string) {
 
 interface Props {
   doUpdate: (instruction: string) => void;
-  reset: () => void;
   settings: Settings;
+  onOpenVersions: () => void;
 }
 
-function PreviewPane({ doUpdate, reset, settings }: Props) {
+function PreviewPane({ doUpdate, settings, onOpenVersions }: Props) {
   const { appState } = useAppStore();
-  const { inputMode, head, commits } = useProjectStore();
+  const { inputMode, referenceImages, head, commits, setHead } = useProjectStore();
+  const [activeReferenceIndex, setActiveReferenceIndex] = useState(0);
+
+  // Sorted commit list for version navigation
+  const sortedCommits = useMemo(() =>
+    Object.values(commits).sort(
+      (a, b) => new Date(a.dateCreated).getTime() - new Date(b.dateCreated).getTime()
+    ), [commits]);
+
+  const currentVersionIndex = sortedCommits.findIndex(c => c.hash === head);
+  const totalVersions = sortedCommits.length;
+  const canGoPrev = currentVersionIndex > 0;
+  const canGoNext = currentVersionIndex < totalVersions - 1;
 
   const currentCommit = head && commits[head] ? commits[head] : "";
   const currentCode = currentCommit
@@ -46,30 +64,9 @@ function PreviewPane({ doUpdate, reset, settings }: Props) {
       : currentCode;
 
   return (
-    <div className="ml-4">
-      <Tabs defaultValue="desktop">
-        <div className="flex justify-between mr-8 mb-4">
-          <div className="flex items-center gap-x-2">
-            {appState === AppState.CODE_READY && (
-              <>
-                <Button
-                  onClick={reset}
-                  className="flex items-center ml-4 gap-x-2 dark:text-white dark:bg-gray-700"
-                >
-                  <FaUndo />
-                  Reset
-                </Button>
-                <Button
-                  onClick={() => downloadCode(previewCode)}
-                  variant="secondary"
-                  className="flex items-center gap-x-2 mr-4 dark:text-white dark:bg-gray-700 download-btn"
-                  data-testid="download-code"
-                >
-                  <FaDownload /> Download Code
-                </Button>
-              </>
-            )}
-          </div>
+    <div className="flex-1 flex flex-col min-h-0">
+      <Tabs defaultValue="desktop" className="flex-1 flex flex-col min-h-0">
+        <div className="flex items-center justify-between px-4 py-2 shrink-0 border-b border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-950">
           <div className="flex items-center">
             <TabsList>
               <TabsTrigger value="desktop" title="Desktop" data-testid="tab-desktop">
@@ -81,12 +78,64 @@ function PreviewPane({ doUpdate, reset, settings }: Props) {
               <TabsTrigger value="code" title="Code" data-testid="tab-code">
                 <FaCode />
               </TabsTrigger>
+              {referenceImages.length > 0 && (
+                <TabsTrigger value="reference" title="Reference Image">
+                  <LuImage />
+                </TabsTrigger>
+              )}
             </TabsList>
+          </div>
+
+          {/* Version navigation */}
+          {totalVersions > 0 && (
+            <div className="flex items-center gap-1">
+              <Button
+                onClick={() => canGoPrev && setHead(sortedCommits[currentVersionIndex - 1].hash)}
+                variant="ghost"
+                size="icon"
+                title="Previous version"
+                className={`h-7 w-7 ${canGoPrev ? "" : "invisible"}`}
+              >
+                <LuChevronLeft className="w-4 h-4" />
+              </Button>
+              <button
+                onClick={onOpenVersions}
+                className="text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors px-1.5 py-0.5 rounded tabular-nums"
+                title="View all versions"
+              >
+                v{currentVersionIndex + 1}
+              </button>
+              <Button
+                onClick={() => canGoNext && setHead(sortedCommits[currentVersionIndex + 1].hash)}
+                variant="ghost"
+                size="icon"
+                title="Next version"
+                className={`h-7 w-7 ${canGoNext ? "" : "invisible"}`}
+              >
+                <LuChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
+          )}
+
+          <div className="flex items-center gap-1">
+            {appState === AppState.CODE_READY && (
+              <Button
+                onClick={() => downloadCode(previewCode)}
+                variant="ghost"
+                size="icon"
+                title="Download Code"
+                className="h-9 w-9"
+                data-testid="download-code"
+              >
+                <LuDownload />
+              </Button>
+            )}
             <Button
               onClick={() => openInNewTab(previewCode)}
               variant="ghost"
               size="icon"
               title="Open in New Tab"
+              className="h-9 w-9"
             >
               <LuExternalLink />
             </Button>
@@ -104,32 +153,78 @@ function PreviewPane({ doUpdate, reset, settings }: Props) {
               variant="ghost"
               size="icon"
               title="Refresh Preview"
+              className="h-9 w-9"
             >
               <LuRefreshCw />
             </Button>
           </div>
         </div>
-        <TabsContent value="desktop">
+        <TabsContent value="desktop" className="flex-1 min-h-0 mt-0 data-[state=active]:flex data-[state=active]:flex-col">
           <PreviewComponent
             code={previewCode}
             device="desktop"
             doUpdate={doUpdate}
           />
         </TabsContent>
-        <TabsContent value="mobile">
+        <TabsContent value="mobile" className="flex-1 min-h-0 mt-0 data-[state=active]:flex data-[state=active]:flex-col">
           <PreviewComponent
             code={previewCode}
             device="mobile"
             doUpdate={doUpdate}
           />
         </TabsContent>
-        <TabsContent value="code">
-          <CodeTab 
-            code={previewCode} 
-            setCode={() => {}} 
-            settings={settings} 
+        <TabsContent value="code" className="flex-1 min-h-0 mt-0 overflow-auto">
+          <CodeTab
+            code={previewCode}
+            setCode={() => {}}
+            settings={settings}
           />
         </TabsContent>
+        {referenceImages.length > 0 && (
+          <TabsContent value="reference" className="flex-1 min-h-0 mt-0 overflow-auto">
+            <div className="flex flex-col items-center gap-4 p-4">
+              {inputMode === "video" ? (
+                <video
+                  muted
+                  autoPlay
+                  loop
+                  className="max-w-full max-h-[80vh] rounded-lg border border-gray-200 dark:border-zinc-700"
+                  src={referenceImages[0]}
+                />
+              ) : (
+                <>
+                  <img
+                    className="max-w-full max-h-[80vh] object-contain rounded-lg border border-gray-200 dark:border-zinc-700"
+                    src={referenceImages[activeReferenceIndex] || referenceImages[0]}
+                    alt={`Reference ${activeReferenceIndex + 1}`}
+                  />
+                  {referenceImages.length > 1 && (
+                    <div className="flex gap-2 overflow-x-auto">
+                      {referenceImages.map((image, index) => (
+                        <button
+                          key={`${image}-${index}`}
+                          type="button"
+                          onClick={() => setActiveReferenceIndex(index)}
+                          className={`h-12 w-12 rounded-md overflow-hidden flex-shrink-0 border-2 transition-colors ${
+                            activeReferenceIndex === index
+                              ? "border-blue-500"
+                              : "border-transparent hover:border-gray-300 dark:hover:border-zinc-600"
+                          }`}
+                        >
+                          <img
+                            className="h-full w-full object-cover"
+                            src={image}
+                            alt={`Reference thumbnail ${index + 1}`}
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

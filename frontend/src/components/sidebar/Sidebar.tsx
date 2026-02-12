@@ -1,18 +1,14 @@
-import classNames from "classnames";
 import { useAppStore } from "../../store/app-store";
 import { useProjectStore } from "../../store/project-store";
 import { AppState } from "../../types";
-import CodePreview from "../preview/CodePreview";
-import KeyboardShortcutBadge from "../core/KeyboardShortcutBadge";
-// import TipLink from "../messages/TipLink";
-import SelectAndEditModeToggleButton from "../select-and-edit/SelectAndEditModeToggleButton";
 import { Button } from "../ui/button";
-import { Textarea } from "../ui/textarea";
 import { useEffect, useRef, useState, useCallback } from "react";
-import HistoryDisplay from "../history/HistoryDisplay";
+import { LuMousePointerClick, LuRefreshCw, LuArrowUp } from "react-icons/lu";
+import { toast } from "react-hot-toast";
+
 import Variants from "../variants/Variants";
 import UpdateImageUpload, { UpdateImagePreview } from "../UpdateImageUpload";
-import ThinkingIndicator from "../thinking/ThinkingIndicator";
+import AgentActivity from "../agent/AgentActivity";
 
 interface SidebarProps {
   showSelectAndEditFeature: boolean;
@@ -21,6 +17,8 @@ interface SidebarProps {
   cancelCodeGeneration: () => void;
 }
 
+const MAX_UPDATE_IMAGES = 5;
+
 function Sidebar({
   showSelectAndEditFeature,
   doUpdate,
@@ -28,10 +26,11 @@ function Sidebar({
   cancelCodeGeneration,
 }: SidebarProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const middlePaneRef = useRef<HTMLDivElement>(null);
   const [isErrorExpanded, setIsErrorExpanded] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
-  const { appState, updateInstruction, setUpdateInstruction, updateImages, setUpdateImages } = useAppStore();
+  const { appState, updateInstruction, setUpdateInstruction, updateImages, setUpdateImages, inSelectAndEditMode, toggleInSelectAndEditMode } = useAppStore();
 
   // Helper function to convert file to data URL
   const fileToDataURL = (file: File): Promise<string> => {
@@ -43,32 +42,52 @@ function Sidebar({
     });
   };
 
-  const handleDrop = useCallback(async (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    
-    const files = Array.from(e.dataTransfer.files).filter(file => 
-      file.type === 'image/png' || file.type === 'image/jpeg'
-    );
-    
-    if (files.length > 0) {
+  const handleDrop = useCallback(
+    async (e: React.DragEvent) => {
+      e.preventDefault();
+      setIsDragging(false);
+
+      const files = Array.from(e.dataTransfer.files).filter(
+        (file) => file.type === "image/png" || file.type === "image/jpeg"
+      );
+
+      if (files.length === 0) return;
+
       try {
-        const newImagePromises = files.map(file => fileToDataURL(file));
+        if (updateImages.length >= MAX_UPDATE_IMAGES) {
+          toast.error(
+            `You’ve reached the limit of ${MAX_UPDATE_IMAGES} reference images. Remove one to add another.`
+          );
+          return;
+        }
+
+        const remainingSlots = MAX_UPDATE_IMAGES - updateImages.length;
+        let filesToAdd = files;
+        if (filesToAdd.length > remainingSlots) {
+          toast.error(
+            `Only ${remainingSlots} more image${
+              remainingSlots === 1 ? "" : "s"
+            } will be added to stay within the ${MAX_UPDATE_IMAGES}-image limit.`
+          );
+          filesToAdd = filesToAdd.slice(0, remainingSlots);
+        }
+
+        const newImagePromises = filesToAdd.map((file) => fileToDataURL(file));
         const newImages = await Promise.all(newImagePromises);
         setUpdateImages([...updateImages, ...newImages]);
       } catch (error) {
-        console.error('Error reading files:', error);
+        console.error("Error reading files:", error);
       }
-    }
-  }, [updateImages, setUpdateImages]);
+    },
+    [updateImages, setUpdateImages]
+  );
 
-  const { inputMode, referenceImages, head, commits } = useProjectStore();
-  const [activeReferenceIndex, setActiveReferenceIndex] = useState(0);
+  const { head, commits } = useProjectStore();
 
-  const viewedCode =
-    head && commits[head]
-      ? commits[head].variants[commits[head].selectedVariantIndex].code
-      : "";
+  const currentCommit = head ? commits[head] : null;
+  const selectedVariantIndex = currentCommit?.selectedVariantIndex ?? 0;
+
+  const isFirstGeneration = currentCommit?.type === "ai_create";
 
   // Check if the currently selected variant is complete
   const isSelectedVariantComplete =
@@ -90,6 +109,15 @@ function Sidebar({
     commits[head] &&
     commits[head].variants[commits[head].selectedVariantIndex].errorMessage;
 
+  // Auto-resize textarea to fit content
+  const autoResize = useCallback(() => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      textarea.style.height = "auto";
+      textarea.style.height = textarea.scrollHeight + "px";
+    }
+  }, []);
+
   // Focus on the update instruction textarea when a variant is complete
   useEffect(() => {
     if (
@@ -100,34 +128,53 @@ function Sidebar({
     }
   }, [appState, isSelectedVariantComplete]);
 
+  // Reset textarea height when instruction changes externally (e.g., cleared after submit)
+  useEffect(() => {
+    autoResize();
+  }, [updateInstruction, autoResize]);
+
   // Reset error expanded state when variant changes
   useEffect(() => {
     setIsErrorExpanded(false);
   }, [head, commits[head || ""]?.selectedVariantIndex]);
 
   useEffect(() => {
-    if (activeReferenceIndex >= referenceImages.length) {
-      setActiveReferenceIndex(0);
-    }
-  }, [activeReferenceIndex, referenceImages.length]);
+    if (!middlePaneRef.current) return;
+    requestAnimationFrame(() => {
+      if (!middlePaneRef.current) return;
+      middlePaneRef.current.scrollTop = middlePaneRef.current.scrollHeight;
+    });
+  }, [head, selectedVariantIndex]);
 
-  useEffect(() => {
-    if (referenceImages.length > 0) {
-      setActiveReferenceIndex(0);
-    }
-  }, [referenceImages]);
 
   return (
-    <>
-      <Variants />
+    <div className="flex flex-col h-full">
+      <div className="shrink-0 border-b border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-4 py-2">
+        <Variants />
+      </div>
 
-      <ThinkingIndicator />
+      {/* Scrollable content */}
+      <div
+        ref={middlePaneRef}
+        className="flex-1 min-h-0 overflow-y-auto sidebar-scrollbar-stable px-6 pt-4"
+      >
+        <AgentActivity />
 
-      {/* Show code preview when coding and the selected variant is not complete */}
-      {appState === AppState.CODING && !isSelectedVariantComplete && (
-        <div className="flex flex-col">
-          <CodePreview code={viewedCode} />
+        {/* Regenerate button for first generation */}
+        {isFirstGeneration && (appState === AppState.CODE_READY || isSelectedVariantComplete) && !isSelectedVariantError && (
+          <div className="flex justify-end mb-3">
+            <button
+              onClick={regenerate}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
+            >
+              <LuRefreshCw className="w-3.5 h-3.5" />
+              Retry
+            </button>
+          </div>
+        )}
 
+        {/* Show cancel button when coding */}
+        {appState === AppState.CODING && !isSelectedVariantComplete && (
           <div className="flex w-full">
             <Button
               onClick={cancelCodeGeneration}
@@ -136,45 +183,45 @@ function Sidebar({
               Cancel All Generations
             </Button>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Show error message when selected option has an error */}
-      {isSelectedVariantError && (
-        <div className="bg-red-50 border border-red-200 rounded-md p-3 mb-2">
-          <div className="text-red-800 text-sm">
-            <div className="font-medium mb-1">
-              This option failed to generate because
-            </div>
-            {selectedVariantErrorMessage && (
-              <div className="mb-2">
-                <div className="text-red-700 bg-red-100 border border-red-300 rounded px-2 py-1 text-xs font-mono break-words">
-                  {selectedVariantErrorMessage.length > 200 && !isErrorExpanded
-                    ? `${selectedVariantErrorMessage.slice(0, 200)}...`
-                    : selectedVariantErrorMessage}
-                </div>
-                {selectedVariantErrorMessage.length > 200 && (
-                  <button
-                    onClick={() => setIsErrorExpanded(!isErrorExpanded)}
-                    className="text-red-600 text-xs underline mt-1 hover:text-red-800"
-                  >
-                    {isErrorExpanded ? "Show less" : "Show more"}
-                  </button>
-                )}
+        {/* Show error message when selected option has an error */}
+        {isSelectedVariantError && (
+          <div className="bg-red-50 border border-red-200 rounded-md p-3 mb-2">
+            <div className="text-red-800 text-sm">
+              <div className="font-medium mb-1">
+                This option failed to generate because
               </div>
-            )}
-            <div>Switch to another option above to make updates.</div>
+              {selectedVariantErrorMessage && (
+                <div className="mb-2">
+                  <div className="text-red-700 bg-red-100 border border-red-300 rounded px-2 py-1 text-xs font-mono break-words">
+                    {selectedVariantErrorMessage.length > 200 && !isErrorExpanded
+                      ? `${selectedVariantErrorMessage.slice(0, 200)}...`
+                      : selectedVariantErrorMessage}
+                  </div>
+                  {selectedVariantErrorMessage.length > 200 && (
+                    <button
+                      onClick={() => setIsErrorExpanded(!isErrorExpanded)}
+                      className="text-red-600 text-xs underline mt-1 hover:text-red-800"
+                    >
+                      {isErrorExpanded ? "Show less" : "Show more"}
+                    </button>
+                  )}
+                </div>
+              )}
+              <div>Switch to another option above to make updates.</div>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* Show update UI when app state is ready OR the selected variant is complete (but not errored) */}
+      {/* Pinned bottom: prompt box + option selector */}
       {(appState === AppState.CODE_READY || isSelectedVariantComplete) &&
         !isSelectedVariantError && (
           <div
+            className="shrink-0 bg-white dark:bg-zinc-950 px-4 py-2"
             onDragEnter={() => setIsDragging(true)}
             onDragLeave={(e) => {
-              // Only set to false if we're leaving the container entirely
               if (!e.currentTarget.contains(e.relatedTarget as Node)) {
                 setIsDragging(false);
               }
@@ -182,124 +229,87 @@ function Sidebar({
             onDragOver={(e) => e.preventDefault()}
             onDrop={handleDrop}
           >
-            <div className="grid w-full gap-2 relative">
-              <UpdateImagePreview 
-                updateImages={updateImages} 
-                setUpdateImages={setUpdateImages} 
+            {/* Select and edit instructions card */}
+            {inSelectAndEditMode && (
+              <div className="mb-2 flex items-center justify-between rounded-xl border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-900 px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <LuMousePointerClick className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400 shrink-0" />
+                  <span className="text-sm text-gray-600 dark:text-gray-400">Click any element in the preview to edit it</span>
+                </div>
+                <button
+                  onClick={toggleInSelectAndEditMode}
+                  className="shrink-0 ml-3 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
+                >
+                  Exit
+                </button>
+              </div>
+            )}
+            <div className="relative w-full overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm ring-1 ring-black/5 dark:border-zinc-700 dark:bg-zinc-900 dark:ring-white/5">
+              <UpdateImagePreview
+                updateImages={updateImages}
+                setUpdateImages={setUpdateImages}
               />
-              <Textarea
+              <textarea
                 ref={textareaRef}
                 placeholder="Tell the AI what to change..."
-                onChange={(e) => setUpdateInstruction(e.target.value)}
+                onChange={(e) => {
+                  setUpdateInstruction(e.target.value);
+                  autoResize();
+                }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
                     doUpdate(updateInstruction);
                   }
                 }}
                 value={updateInstruction}
                 data-testid="update-input"
+                rows={1}
+                className="max-h-40 w-full resize-none border-0 bg-transparent px-4 pb-2 pt-3 text-[15px] leading-6 text-gray-800 placeholder:text-gray-400 focus:outline-none dark:text-zinc-100 dark:placeholder:text-zinc-500"
               />
-              <div className="flex gap-2">
-                <Button
+              <div className="flex items-center justify-between border-t border-gray-100 px-3 py-2.5 dark:border-zinc-800">
+                <div className="flex items-center gap-1.5">
+                  <UpdateImageUpload
+                    updateImages={updateImages}
+                    setUpdateImages={setUpdateImages}
+                  />
+                  {showSelectAndEditFeature && (
+                    <button
+                      onClick={toggleInSelectAndEditMode}
+                      className={`rounded-lg p-2 transition-colors ${
+                        inSelectAndEditMode
+                          ? "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400"
+                          : "bg-gray-50 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
+                      }`}
+                      title={inSelectAndEditMode ? "Exit selection mode" : "Select an element in the preview to target your edit"}
+                    >
+                      <LuMousePointerClick className="w-[18px] h-[18px]" />
+                    </button>
+                  )}
+                </div>
+                <button
                   onClick={() => doUpdate(updateInstruction)}
-                  className="dark:text-white dark:bg-gray-700 update-btn flex-1"
+                  disabled={!updateInstruction.trim()}
+                  className={`rounded-xl p-2.5 transition-colors update-btn ${
+                    updateInstruction.trim()
+                      ? "bg-gray-900 text-white hover:bg-black dark:bg-white dark:text-black dark:hover:bg-gray-200"
+                      : "cursor-not-allowed bg-gray-200 text-gray-400 dark:bg-zinc-700 dark:text-zinc-500"
+                  }`}
+                  title="Send"
                 >
-                  Update <KeyboardShortcutBadge letter="enter" />
-                </Button>
-                <UpdateImageUpload 
-                  updateImages={updateImages} 
-                  setUpdateImages={setUpdateImages} 
-                />
+                  <LuArrowUp className="w-[18px] h-[18px]" strokeWidth={2.5} />
+                </button>
               </div>
-              
-              {/* Drag overlay that covers the entire update area */}
+
               {isDragging && (
-                <div className="absolute inset-0 bg-blue-50/90 dark:bg-gray-800/90 border-2 border-dashed border-blue-400 dark:border-blue-600 rounded-md flex items-center justify-center pointer-events-none z-10">
+                <div className="absolute inset-0 bg-blue-50/90 dark:bg-gray-800/90 border-2 border-dashed border-blue-400 dark:border-blue-600 rounded-xl flex items-center justify-center pointer-events-none z-10">
                   <p className="text-blue-600 dark:text-blue-400 font-medium">Drop images here</p>
                 </div>
               )}
             </div>
-            <div className="flex items-center justify-end gap-x-2 mt-2">
-              <Button
-                onClick={regenerate}
-                className="flex items-center gap-x-2 dark:text-white dark:bg-gray-700 regenerate-btn"
-              >
-                🔄 Regenerate
-              </Button>
-              {showSelectAndEditFeature && <SelectAndEditModeToggleButton />}
-            </div>
-            {/* <div className="flex justify-end items-center mt-2">
-            <TipLink />
-          </div> */}
           </div>
         )}
-
-      {/* Reference image display */}
-      <div className="flex gap-x-2 mt-2">
-        {referenceImages.length > 0 && (
-          <div className="flex flex-col">
-            <div
-              className={classNames("relative w-[340px]", {
-                scanning: appState === AppState.CODING,
-              })}
-            >
-              {inputMode === "image" && (
-                <div className="w-[340px] rounded-md border border-gray-200 bg-white p-2">
-                  <div className="rounded-md border border-gray-100 bg-gray-50 p-1">
-                    <img
-                      className="w-full max-h-[360px] object-contain rounded"
-                      src={referenceImages[activeReferenceIndex] || referenceImages[0]}
-                      alt={`Reference ${activeReferenceIndex + 1}`}
-                    />
-                  </div>
-                  {referenceImages.length > 1 && (
-                    <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
-                      {referenceImages.map((image, index) => (
-                        <button
-                          key={`${image}-${index}`}
-                          type="button"
-                          onClick={() => setActiveReferenceIndex(index)}
-                          className={`h-14 w-14 rounded border overflow-hidden flex-shrink-0 ${
-                            activeReferenceIndex === index
-                              ? "border-blue-500 ring-2 ring-blue-200"
-                              : "border-gray-200"
-                          }`}
-                          aria-label={`View reference ${index + 1}`}
-                        >
-                          <img
-                            className="h-full w-full object-cover"
-                            src={image}
-                            alt={`Reference thumbnail ${index + 1}`}
-                          />
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-              {inputMode === "video" && (
-                <video
-                  muted
-                  autoPlay
-                  loop
-                  className="w-[340px] border border-gray-200 rounded-md"
-                  src={referenceImages[0]}
-                />
-              )}
-            </div>
-            <div className="text-gray-400 uppercase text-sm text-center mt-1">
-              {inputMode === "video"
-                ? "Original Video"
-                : referenceImages.length > 1
-                  ? `Original Screenshots (${activeReferenceIndex + 1}/${referenceImages.length})`
-                  : "Original Screenshot"}
-            </div>
-          </div>
-        )}
-      </div>
-
-      <HistoryDisplay shouldDisableReverts={appState === AppState.CODING} />
-    </>
+    </div>
   );
 }
 

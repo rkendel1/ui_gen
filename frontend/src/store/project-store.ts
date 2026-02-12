@@ -1,5 +1,12 @@
 import { create } from "zustand";
-import { Commit, CommitHash, VariantStatus } from "../components/commits/types";
+import {
+  AgentEvent,
+  Commit,
+  CommitHash,
+  VariantHistoryMessage,
+  VariantStatus,
+} from "../components/commits/types";
+import { PromptAsset } from "../types";
 
 // Store for app-wide state
 interface ProjectStore {
@@ -12,6 +19,9 @@ interface ProjectStore {
   setReferenceImages: (images: string[]) => void;
   initialPrompt: string;
   setInitialPrompt: (prompt: string) => void;
+  assetsById: Record<string, PromptAsset>;
+  upsertPromptAssets: (assets: PromptAsset[]) => void;
+  resetPromptAssets: () => void;
 
   // Outputs
   commits: Record<string, Commit>;
@@ -33,6 +43,11 @@ interface ProjectStore {
     thinking: string
   ) => void;
   setCommitCode: (hash: CommitHash, numVariant: number, code: string) => void;
+  appendVariantHistoryMessage: (
+    hash: CommitHash,
+    numVariant: number,
+    message: VariantHistoryMessage
+  ) => void;
   updateSelectedVariantIndex: (hash: CommitHash, index: number) => void;
   updateVariantStatus: (
     hash: CommitHash,
@@ -41,6 +56,25 @@ interface ProjectStore {
     errorMessage?: string
   ) => void;
   resizeVariants: (hash: CommitHash, count: number) => void;
+  setVariantModels: (hash: CommitHash, models: string[]) => void;
+
+  startAgentEvent: (
+    hash: CommitHash,
+    numVariant: number,
+    event: AgentEvent
+  ) => void;
+  appendAgentEventContent: (
+    hash: CommitHash,
+    numVariant: number,
+    eventId: string,
+    content: string
+  ) => void;
+  finishAgentEvent: (
+    hash: CommitHash,
+    numVariant: number,
+    eventId: string,
+    updates: Partial<AgentEvent>
+  ) => void;
 
   setHead: (hash: CommitHash) => void;
   resetHead: () => void;
@@ -60,6 +94,17 @@ export const useProjectStore = create<ProjectStore>((set) => ({
   setReferenceImages: (images) => set({ referenceImages: images }),
   initialPrompt: "",
   setInitialPrompt: (prompt) => set({ initialPrompt: prompt }),
+  assetsById: {},
+  upsertPromptAssets: (assets) =>
+    set((state) => {
+      if (assets.length === 0) return state;
+      const merged = { ...state.assetsById };
+      for (const asset of assets) {
+        merged[asset.id] = asset;
+      }
+      return { assetsById: merged };
+    }),
+  resetPromptAssets: () => set({ assetsById: {} }),
 
   // Outputs
   commits: {},
@@ -72,8 +117,10 @@ export const useProjectStore = create<ProjectStore>((set) => ({
       ...commit,
       variants: commit.variants.map((variant) => ({
         ...variant,
+        history: variant.history || [],
         status: variant.status || ("generating" as VariantStatus),
         thinkingStartTime: Date.now(),
+        agentEvents: [],
       })),
     };
 
@@ -175,6 +222,30 @@ export const useProjectStore = create<ProjectStore>((set) => ({
         },
       };
     }),
+  appendVariantHistoryMessage: (hash, numVariant, message) =>
+    set((state) => {
+      const commit = state.commits[hash];
+      if (!commit || commit.isCommitted) return state;
+      const variants = commit.variants.map((variant, index) => {
+        if (index !== numVariant) return variant;
+        const history = variant.history || [];
+        const last = history[history.length - 1];
+        const isDuplicate =
+          last &&
+          last.role === message.role &&
+          last.text === message.text &&
+          last.imageAssetIds.join("|") === message.imageAssetIds.join("|") &&
+          last.videoAssetIds.join("|") === message.videoAssetIds.join("|");
+        if (isDuplicate) return variant;
+        return { ...variant, history: [...history, message] };
+      });
+      return {
+        commits: {
+          ...state.commits,
+          [hash]: { ...commit, variants },
+        },
+      };
+    }),
   updateSelectedVariantIndex: (hash: CommitHash, index: number) =>
     set((state) => {
       const commit = state.commits[hash];
@@ -228,8 +299,18 @@ export const useProjectStore = create<ProjectStore>((set) => ({
 
       // Resize variants array to match backend count
       const currentVariants = commit.variants;
+      const seedHistory = currentVariants[0]?.history || [];
       const newVariants = Array(count).fill(null).map((_, index) => 
-        currentVariants[index] || { code: "", status: "generating" as VariantStatus }
+        currentVariants[index] || {
+          code: "",
+          history: seedHistory.map((message) => ({
+            ...message,
+            imageAssetIds: [...message.imageAssetIds],
+            videoAssetIds: [...message.videoAssetIds],
+          })),
+          status: "generating" as VariantStatus,
+          agentEvents: [],
+        }
       );
 
       return {
@@ -240,6 +321,94 @@ export const useProjectStore = create<ProjectStore>((set) => ({
             variants: newVariants,
             selectedVariantIndex: Math.min(commit.selectedVariantIndex, count - 1),
           },
+        },
+      };
+    }),
+  setVariantModels: (hash: CommitHash, models: string[]) =>
+    set((state) => {
+      const commit = state.commits[hash];
+      if (!commit || commit.isCommitted) return state;
+      const variants = commit.variants.map((variant, index) => ({
+        ...variant,
+        model: models[index] ?? variant.model,
+      }));
+      return {
+        commits: {
+          ...state.commits,
+          [hash]: { ...commit, variants },
+        },
+      };
+    }),
+
+  startAgentEvent: (hash, numVariant, event) =>
+    set((state) => {
+      const commit = state.commits[hash];
+      if (!commit || commit.isCommitted) return state;
+      const variants = commit.variants.map((variant, index) => {
+        if (index !== numVariant) return variant;
+        const events = variant.agentEvents || [];
+        const existingIndex = events.findIndex((e) => e.id === event.id);
+        if (existingIndex === -1) {
+          return { ...variant, agentEvents: [...events, event] };
+        }
+        const updatedEvents = events.map((e) =>
+          e.id === event.id
+            ? {
+                ...e,
+                ...event,
+                content: event.content ? event.content : e.content,
+                startedAt: e.startedAt || event.startedAt,
+              }
+            : e
+        );
+        return { ...variant, agentEvents: updatedEvents };
+      });
+      return {
+        commits: {
+          ...state.commits,
+          [hash]: { ...commit, variants },
+        },
+      };
+    }),
+
+  appendAgentEventContent: (hash, numVariant, eventId, content) =>
+    set((state) => {
+      const commit = state.commits[hash];
+      if (!commit || commit.isCommitted) return state;
+      const variants = commit.variants.map((variant, index) => {
+        if (index !== numVariant) return variant;
+        const events = variant.agentEvents || [];
+        const updatedEvents = events.map((event) =>
+          event.id === eventId
+            ? { ...event, content: (event.content || "") + content }
+            : event
+        );
+        return { ...variant, agentEvents: updatedEvents };
+      });
+      return {
+        commits: {
+          ...state.commits,
+          [hash]: { ...commit, variants },
+        },
+      };
+    }),
+
+  finishAgentEvent: (hash, numVariant, eventId, updates) =>
+    set((state) => {
+      const commit = state.commits[hash];
+      if (!commit || commit.isCommitted) return state;
+      const variants = commit.variants.map((variant, index) => {
+        if (index !== numVariant) return variant;
+        const events = variant.agentEvents || [];
+        const updatedEvents = events.map((event) =>
+          event.id === eventId ? { ...event, ...updates } : event
+        );
+        return { ...variant, agentEvents: updatedEvents };
+      });
+      return {
+        commits: {
+          ...state.commits,
+          [hash]: { ...commit, variants },
         },
       };
     }),
