@@ -105,6 +105,22 @@ In terms of libraries,
 {FORMAT_INSTRUCTIONS}
 """
 
+SVELTE_TAILWIND_SYSTEM_PROMPT = f"""
+You are an expert Svelte/Tailwind developer.
+
+{GENERAL_INSTRUCTIONS}
+
+Create the component as a Svelte 4 custom element (web component) that can be used in any HTML page.
+
+In terms of libraries,
+- Use Svelte 4 from CDN: <script type="module"> with imports from https://unpkg.com/svelte@4/
+- Use this script to include Tailwind: <script src="https://cdn.tailwindcss.com"></script>
+{LIBRARY_INSTRUCTIONS}
+
+{FORMAT_INSTRUCTIONS}
+The component should be defined as a custom element using customElements.define().
+"""
+
 SVG_SYSTEM_PROMPT = f"""
 You are an expert at building SVGs.
 
@@ -122,5 +138,6 @@ SYSTEM_PROMPTS = SystemPrompts(
     bootstrap=BOOTSTRAP_SYSTEM_PROMPT,
     ionic_tailwind=IONIC_TAILWIND_SYSTEM_PROMPT,
     vue_tailwind=VUE_TAILWIND_SYSTEM_PROMPT,
+    svelte_tailwind=SVELTE_TAILWIND_SYSTEM_PROMPT,
     svg=SVG_SYSTEM_PROMPT,
 )
