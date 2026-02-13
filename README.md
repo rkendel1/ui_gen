@@ -10,6 +10,7 @@ Supported stacks:
 - HTML + CSS
 - React + Tailwind
 - Vue + Tailwind
+- Svelte + Tailwind (Web Components)
 - Bootstrap
 - Ionic + Tailwind
 - SVG
