@@ -141,14 +141,14 @@ Create the component as a Svelte 4 custom element (web component) that can be us
 
 In terms of libraries,
 
-- Use Svelte 4 from CDN: <script type="module"> with imports from https://unpkg.com/svelte@4/
+- Use Svelte 4 from CDN: <script type="module"> with imports from https://unpkg.com/svelte@4/internal
 - Use this script to include Tailwind: <script src="https://cdn.tailwindcss.com"></script>
 - You can use Google Fonts
 - Font Awesome for icons: <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"></link>
 
 Return only the full code in <html></html> tags.
 Do not include markdown "```" or "```html" at the start or end.
-The component should be defined as a custom element using customElements.define().
+The component should be defined as a custom element using customElements.define() with a descriptive name (must contain a hyphen per Web Components spec).
 """
 
 IMPORTED_CODE_SVG_SYSTEM_PROMPT = """

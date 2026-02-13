@@ -113,12 +113,12 @@ You are an expert Svelte/Tailwind developer.
 Create the component as a Svelte 4 custom element (web component) that can be used in any HTML page.
 
 In terms of libraries,
-- Use Svelte 4 from CDN: <script type="module"> with imports from https://unpkg.com/svelte@4/
+- Use Svelte 4 from CDN: <script type="module"> with imports from https://unpkg.com/svelte@4/internal
 - Use this script to include Tailwind: <script src="https://cdn.tailwindcss.com"></script>
 {LIBRARY_INSTRUCTIONS}
 
 {FORMAT_INSTRUCTIONS}
-The component should be defined as a custom element using customElements.define().
+The component should be defined as a custom element using customElements.define() with a descriptive name (must contain a hyphen per Web Components spec).
 """
 
 SVG_SYSTEM_PROMPT = f"""
